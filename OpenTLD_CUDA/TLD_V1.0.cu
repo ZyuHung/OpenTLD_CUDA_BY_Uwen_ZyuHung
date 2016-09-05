@@ -1027,12 +1027,13 @@ void TLD::mGetAllbbOverlap_gpu(BoundingBox CurrBox)
 	cudaFree(p);
 }
 
-__global__ void GetGoodBadbb_kernel(int *mBB,int Size, int thrGood, int thrBad, int best_overlap,BoundingBox* grid)
+__global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad, int best_overlap,BoundingBox* grid)
 {
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
 	if (idx < Size)
 	{
+		printf("***overlap: %.2f\n", grid[idx].overlap);
 		if (grid[idx].overlap>best_overlap)//找出重叠度最高的bb
 		{
 			mBB[idx] = 2;
