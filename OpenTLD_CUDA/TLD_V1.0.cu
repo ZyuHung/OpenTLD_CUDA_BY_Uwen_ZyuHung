@@ -1036,7 +1036,7 @@ __global__ void GetGoodBadbb_kernel(int *mBB, int Size, float thrGood, float thr
 	mBB[idx] = -1;
 	if (idx < Size)
 	{
-		//printf("****overlap: %.2f\n", grid[idx].overlap);
+		printf("****overlap: %.2f\n", grid[idx].overlap);
 		if (grid[idx].overlap>(float)0.01)//找出重叠度最高的bb
 		{
 			printf("*****idx: %d\n", idx);
@@ -1073,7 +1073,7 @@ void TLD::mGetGoodBadbb_gpu()
 
 	GetGoodBadbb_kernel << <(int)ceil(mGridSize_i / 512), 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, &Best_idx_host, Grid_dev);
 
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
 	cudaMemcpy(result, mBB, sizeof(int)* mGridSize_i, cudaMemcpyDeviceToHost);
 	cudaMemcpy(&Best_idx_host, &Best_idx_dev, sizeof(int), cudaMemcpyDeviceToHost);
