@@ -1,5 +1,6 @@
 #include "TLD_V1.0.h"
 #include "time.h"
+#include "sm_20_atomic_functions.h"
 
 TLD::TLD(const FileNode& file)
 {
@@ -1027,16 +1028,17 @@ void TLD::mGetAllbbOverlap_gpu(BoundingBox CurrBox)
 	cudaFree(p);
 }
 
-__global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad, int best_overlap,BoundingBox* grid)
+__global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad, int* best,BoundingBox* grid)
 {
+
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
 	if (idx < Size)
 	{
-		//printf("***overlap: %.2f,thrGood: %.2f,thrBad: %.2f\n", grid[idx].overlap,thrGood,thrBad);
-		if (grid[idx].overlap>best_overlap)//找出重叠度最高的bb
+		if (grid[idx].overlap>(float)0.05)//找出重叠度最高的bb
 		{
-			mBB[idx] = 2;
+			*best = idx;
+			printf("****best: %d\n", *best);
 		}
 
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
@@ -1049,27 +1051,27 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 		}
 	}
 	__syncthreads();
-	//printf("%d : %d\n", idx, mBB[idx]);
+
 }
 
 void TLD::mGetGoodBadbb_gpu()
 {
-	BoundingBox best, *grid;
-	int *result = new int[mGridSize_i];
-	int *mBB = new int[mGridSize_i];
-	best.overlap = 0;
-	cudaMalloc((void**)&best, sizeof(BoundingBox));
+	BoundingBox *grid;
+	int *best = NULL, *best_dev = new int(0);
+	int *result = new int[mGridSize_i], *mBB = new int[mGridSize_i];
+
+	cudaMalloc((void**)&best, sizeof(int));
 	cudaMalloc((void**)&grid, sizeof(BoundingBox)*mGridSize_i);
 	cudaMalloc((void**)&mBB, sizeof(int)*mGridSize_i);
 
 	cudaMemcpy(grid, mGrid_ptr, sizeof(BoundingBox)* mGridSize_i, cudaMemcpyHostToDevice);
 
-	GetGoodBadbb_kernel << <(int)ceil(mGridSize_i/ 512), 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, best.overlap, grid);
+	GetGoodBadbb_kernel << <(int)ceil(mGridSize_i/ 512), 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, best, grid);
 
 	cudaMemcpy(result, mBB, sizeof(int)* mGridSize_i, cudaMemcpyDeviceToHost);
-	cudaMemcpy(&mBestbb, &best, sizeof(BoundingBox), cudaMemcpyDeviceToHost);
+	cudaMemcpy(best_dev, best, sizeof(int), cudaMemcpyDeviceToHost);
 
-	cudaFree(&best);
+	cudaFree(best);
 	cudaFree(grid);
 	cudaFree(mBB);
 
@@ -1086,6 +1088,7 @@ void TLD::mGetGoodBadbb_gpu()
 		}
 	}
 
+	mBestbb = mGrid_ptr[*best_dev];
 	printf("Best Box: %d %d %d %d\n", mBestbb.x, mBestbb.y, mBestbb.width, mBestbb.height);
 
 	if (mGoodbb_i_vt.size() > mMaxGoodbbNum_i)//保留重叠度最大的10个
