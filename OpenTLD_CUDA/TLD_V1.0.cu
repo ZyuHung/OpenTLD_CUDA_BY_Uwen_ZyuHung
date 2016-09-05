@@ -1,5 +1,6 @@
 #include "TLD_V1.0.h"
 #include "time.h"
+#include "sm_20_atomic_functions.h"
 
 TLD::TLD(const FileNode& file)
 {
@@ -63,8 +64,8 @@ void TLD::init_v(const Mat& FirstFrame_cvM, const Rect& box)
 	//	mGetbbOverlap(box,mGrid_vt[i]);//得到每个网格与图片的重叠度(Overlap)
 	//	}
 
-	mGetGoodBadbb_v();//据Overlap分为goodbox和badbox
-	//mGetGoodBadbb_gpu();
+	//mGetGoodBadbb_v();//据Overlap分为goodbox和badbox
+	mGetGoodBadbb_gpu();
 
 	mLastbb = mBestbb;
 
@@ -1027,15 +1028,19 @@ void TLD::mGetAllbbOverlap_gpu(BoundingBox CurrBox)
 	cudaFree(p);
 }
 
-__global__ void GetGoodBadbb_kernel(int *mBB,int Size, int thrGood, int thrBad, int best_overlap,BoundingBox* grid)
+__global__ void GetGoodBadbb_kernel(int *mBB, int Size, float thrGood, float thrBad,int *Best_idx_dev, BoundingBox* grid)
 {
+	__shared__ int Best_idx;
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
+	//printf("*****idx: %d, thrGdood: %.2f, thrBad: %.2f\n", idx, thrGood, thrBad);
 	mBB[idx] = -1;
 	if (idx < Size)
 	{
-		if (grid[idx].overlap>best_overlap)//找出重叠度最高的bb
+		//printf("****overlap: %.2f\n", grid[idx].overlap);
+		if (grid[idx].overlap>(float)0.01)//找出重叠度最高的bb
 		{
-			mBB[idx] = 2;
+			printf("*****idx: %d\n", idx);
+			atomicExch(&Best_idx, idx);
 		}
 
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
@@ -1047,63 +1052,61 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, int thrGood, int thrBad, 
 			mBB[idx] = 0;
 		}
 	}
-	if (mBB[idx]>= 2)
-	{
-		printf("*****%d\t", idx);
-	}
 	__syncthreads();
-	//printf("%d : %d\n", idx, mBB[idx]);
+	*Best_idx_dev = Best_idx;
+	printf("***idx:%d\n", idx);
+	printf("Best idx:%d\n", *Best_idx_dev);
 }
 
 void TLD::mGetGoodBadbb_gpu()
 {
-	BoundingBox best, *grid;
+	BoundingBox *Grid_dev;
+	int Best_idx_host, Best_idx_dev;
 	int *result = new int[mGridSize_i];
 	int *mBB = new int[mGridSize_i];
-	best.overlap = 0;
-	cudaMalloc((void**)&best, sizeof(BoundingBox));
-	cudaMalloc((void**)&grid, sizeof(BoundingBox)*mGridSize_i);
+
+	cudaMalloc((void**)&Best_idx_dev, sizeof(int));
+	cudaMalloc((void**)&Grid_dev, sizeof(BoundingBox)*mGridSize_i);
 	cudaMalloc((void**)&mBB, sizeof(int)*mGridSize_i);
 
-	cudaMemcpy(grid, mGrid_ptr, sizeof(BoundingBox)* mGridSize_i, cudaMemcpyHostToDevice);
+	cudaMemcpy(Grid_dev, mGrid_ptr, sizeof(BoundingBox)* mGridSize_i, cudaMemcpyHostToDevice);
 
-	GetGoodBadbb_kernel << <(int)ceil(mGridSize_i/ 512), 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, best.overlap, grid);
+	GetGoodBadbb_kernel << <(int)ceil(mGridSize_i / 512), 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, &Best_idx_host, Grid_dev);
+
+	cudaDeviceSynchronize();
 
 	cudaMemcpy(result, mBB, sizeof(int)* mGridSize_i, cudaMemcpyDeviceToHost);
-	cudaMemcpy(&mBestbb, &best, sizeof(BoundingBox), cudaMemcpyDeviceToHost);
+	cudaMemcpy(&Best_idx_host, &Best_idx_dev, sizeof(int), cudaMemcpyDeviceToHost);
 
-	cudaFree(&best);
-	cudaFree(grid);
+	cudaFree(&Best_idx_dev);
+	cudaFree(Grid_dev);
 	cudaFree(mBB);
 
 	for (int i = 0; i < mGridSize_i; i++)
 	{
-		switch (result[i])
-		{
-		case 0:
-			mBadbb_i_vt.push_back(i);
-			break;
-		case 1:
-			mGoodbb_i_vt.push_back(i);
-			break;
-		case 2:
-			cout << result[i] << "(" << i << ")" << " ";
-			system("pause");
-			mBestbb = mGrid_ptr[i];
-			break;
-		}
+		cout << result[i] << endl;
+		//switch (result[i])
+		//{
+		//case 0:
+		//	mBadbb_i_vt.push_back(i);
+		//	break;
+		//case 1:
+		//	mGoodbb_i_vt.push_back(i);
+		//	break;
+		//}
 	}
-
+	printf("****%d\n", Best_idx_host);
+	//mBestbb = mGrid_ptr[Best_idx_host];
 	printf("Best Box: %d %d %d %d\n", mBestbb.x, mBestbb.y, mBestbb.width, mBestbb.height);
 
-	if (mGoodbb_i_vt.size() > mMaxGoodbbNum_i)//保留重叠度最大的10个
-	{
-		//使goodbb数目不超过最大限制
-		nth_element(mGoodbb_i_vt.begin(), mGoodbb_i_vt.begin() + mMaxGoodbbNum_i, mGoodbb_i_vt.end(), OComparator(mGrid_ptr));
-		mGoodbb_i_vt.resize(mMaxGoodbbNum_i);
-	}
+	//if (mGoodbb_i_vt.size() > mMaxGoodbbNum_i)//保留重叠度最大的10个
+	//{
+	//	//使goodbb数目不超过最大限制
+	//	nth_element(mGoodbb_i_vt.begin(), mGoodbb_i_vt.begin() + mMaxGoodbbNum_i, mGoodbb_i_vt.end(), OComparator(mGrid_ptr));
+	//	mGoodbb_i_vt.resize(mMaxGoodbbNum_i);
+	//}
 
-	mGetGoodbbHull_v();//获得框住所有box的矩形
+	//mGetGoodbbHull_v();//获得框住所有box的矩形
 
 	delete[] result;
 }
