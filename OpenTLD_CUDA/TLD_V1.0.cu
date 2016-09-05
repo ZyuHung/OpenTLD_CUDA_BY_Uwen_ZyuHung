@@ -1033,7 +1033,7 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 	mBB[idx] = -1;
 	if (idx < Size)
 	{
-		printf("***overlap: %.2f\n", grid[idx].overlap);
+		//printf("***overlap: %.2f,thrGood: %.2f,thrBad: %.2f\n", grid[idx].overlap,thrGood,thrBad);
 		if (grid[idx].overlap>best_overlap)//找出重叠度最高的bb
 		{
 			mBB[idx] = 2;
@@ -1047,10 +1047,6 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 		{
 			mBB[idx] = 0;
 		}
-	}
-	if (mBB[idx]>= 2)
-	{
-		printf("*****%d\t", idx);
 	}
 	__syncthreads();
 	//printf("%d : %d\n", idx, mBB[idx]);
@@ -1086,11 +1082,6 @@ void TLD::mGetGoodBadbb_gpu()
 			break;
 		case 1:
 			mGoodbb_i_vt.push_back(i);
-			break;
-		case 2:
-			cout << result[i] << "(" << i << ")" << " ";
-			system("pause");
-			mBestbb = mGrid_ptr[i];
 			break;
 		}
 	}
