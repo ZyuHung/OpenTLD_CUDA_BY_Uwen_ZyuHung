@@ -1030,19 +1030,20 @@ void TLD::mGetAllbbOverlap_gpu(BoundingBox CurrBox)
 
 __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad, int* best,BoundingBox* grid)
 {
-	//__shared__ int* best_idx;
+	__shared__ int best_idx;
+	best_idx = 0;
+	__shared__ float best_overlap;
+	best_overlap = 0.0;
+	__syncthreads();
+
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
 	if (idx < Size)
 	{
-		if (grid[idx].overlap>(float)0.05)//找出重叠度最高的bb
+		if (grid[idx].overlap>best_overlap)//找出重叠度最高的bb
 		{
-			//atomicExch(best_idx, idx);
-			//*best = *best_idx;
-			*best = idx;
-			printf("****gird: %.2f,best: %d\n", grid[idx].overlap,*best);
-			
-
+			atomicExch(&best_idx, idx);
+			atomicExch(&best_overlap, grid[idx].overlap);
 		}
 
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
@@ -1056,6 +1057,8 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 	}
 	
 	__syncthreads();
+	*best = best_idx;
+	printf("****best_overlap: %.2f,best: %d\n", best_overlap, best_idx);
 }
 
 void TLD::mGetGoodBadbb_gpu()
