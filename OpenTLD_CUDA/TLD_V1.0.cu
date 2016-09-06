@@ -64,8 +64,8 @@ void TLD::init_v(const Mat& FirstFrame_cvM, const Rect& box)
 	//	mGetbbOverlap(box,mGrid_vt[i]);//得到每个网格与图片的重叠度(Overlap)
 	//	}
 
-	mGetGoodBadbb_v();//据Overlap分为goodbox和badbox
-	//mGetGoodBadbb_gpu();
+	//mGetGoodBadbb_v();//据Overlap分为goodbox和badbox
+	mGetGoodBadbb_gpu();
 
 	mLastbb = mBestbb;
 
@@ -1034,20 +1034,26 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 	best_idx = 0;
 	__shared__ float best_overlap;
 	best_overlap = 0.0;
+	__shared__ unsigned int temp_best_overlap;
 	__syncthreads();
 
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
-
+	int compared = 0;
 	if (idx < Size)
 	{
-		unsigned int temp_best_overlap = (unsigned int)(best_overlap * 100),
-			temp_grididx_overlap = (unsigned int(grid[idx].overlap * 100));
-		if (temp_best_overlap<=temp_grididx_overlap)
+		temp_best_overlap = (unsigned int)(best_overlap * (float)255);
+		unsigned int  temp_grididx_overlap = (unsigned int(grid[idx].overlap * (float)255));
+		//compared = atomicInc(&temp_best_overlap, temp_grididx_overlap);
+		//__syncthreads();
+		//printf("best_overlap:%.2f, grid[idx].overlap:%.2f, temp_best_overlap:%d, temp_grid_overlap:%d, compared:%d\n", 
+		//	best_overlap, grid[idx].overlap, temp_best_overlap, temp_grididx_overlap, compared);
+		
+		if (atomicInc(&temp_best_overlap, temp_grididx_overlap))
 		{
 			atomicExch(&best_idx, idx);
 			atomicExch(&best_overlap, grid[idx].overlap);
-			printf("****idx: %d, best_idx:%d, grid[idx].overlap:%.2f, best_overlap:%.2f\n", idx, best_idx, grid[idx].overlap, best_overlap);
+			//printf("****blockid: %d,idx: %d, best_idx:%d,gird_over:%.4f, best_ovet:%.4f\n", blockIdx.x, idx, best_idx, grid[idx].overlap, best_overlap);
 		}
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
 		{
