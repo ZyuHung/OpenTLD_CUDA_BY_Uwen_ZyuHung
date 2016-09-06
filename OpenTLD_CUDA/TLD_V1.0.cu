@@ -1032,28 +1032,25 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 {
 	__shared__ int best_idx;
 	best_idx = 0;
-	__shared__ float best_overlap;
-	best_overlap = 0.0;
-	__shared__ unsigned int temp_best_overlap;
+	__shared__ int best_overlap;
+	best_overlap = 0;
+	__shared__ int temp_best_overlap;
+	temp_best_overlap = 0;
 	__syncthreads();
 
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
-	int compared = 0;
+
 	if (idx < Size)
 	{
-		temp_best_overlap = (unsigned int)(best_overlap * (float)255);
-		unsigned int  temp_grididx_overlap = (unsigned int(grid[idx].overlap * (float)255));
-		//compared = atomicInc(&temp_best_overlap, temp_grididx_overlap);
-		//__syncthreads();
-		//printf("best_overlap:%.2f, grid[idx].overlap:%.2f, temp_best_overlap:%d, temp_grid_overlap:%d, compared:%d\n", 
-		//	best_overlap, grid[idx].overlap, temp_best_overlap, temp_grididx_overlap, compared);
-		
-		if (atomicInc(&temp_best_overlap, temp_grididx_overlap))
+		unsigned int  temp_grididx_overlap = (unsigned int(grid[idx].overlap * 100));
+		atomicExch(&best_overlap, atomicMax(&temp_best_overlap, temp_grididx_overlap));
+		unsigned int best_latest = atomicSub(&temp_best_overlap, best_overlap);
+
+		if (temp_best_overlap)
 		{
 			atomicExch(&best_idx, idx);
-			atomicExch(&best_overlap, grid[idx].overlap);
-			//printf("****blockid: %d,idx: %d, best_idx:%d,gird_over:%.4f, best_ovet:%.4f\n", blockIdx.x, idx, best_idx, grid[idx].overlap, best_overlap);
+			atomicExch(&temp_best_overlap, best_latest);
 		}
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
 		{
