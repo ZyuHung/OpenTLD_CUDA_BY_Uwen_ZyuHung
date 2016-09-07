@@ -1028,30 +1028,17 @@ void TLD::mGetAllbbOverlap_gpu(BoundingBox CurrBox)
 	cudaFree(p);
 }
 
-__global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad, int* best,BoundingBox* grid)
+__global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad,BoundingBox* grid)
 {
 	__shared__ int best_idx;
 	best_idx = 0;
-	__shared__ int best_overlap;
-	best_overlap = 0;
-	__shared__ int temp_best_overlap;
-	temp_best_overlap = 0;
 	__syncthreads();
 
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
-
+	int compared = 0;
 	if (idx < Size)
 	{
-		unsigned int  temp_grididx_overlap = (unsigned int(grid[idx].overlap * 100));
-		atomicExch(&best_overlap, atomicMax(&temp_best_overlap, temp_grididx_overlap));
-		unsigned int best_latest = atomicSub(&temp_best_overlap, best_overlap);
-
-		if (temp_best_overlap)
-		{
-			atomicExch(&best_idx, idx);
-			atomicExch(&temp_best_overlap, best_latest);
-		}
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
 		{
 			mBB[idx] = 1;
@@ -1063,8 +1050,7 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 	}
 	
 	__syncthreads();
-	best[blockIdx.x] = best_idx;
-	//printf("****blockIdx.x: %d, best_idx: %d\n", blockIdx.x, best_idx);
+
 }
 
 void TLD::mGetGoodBadbb_gpu()
