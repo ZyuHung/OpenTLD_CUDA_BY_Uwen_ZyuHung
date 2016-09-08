@@ -1,5 +1,6 @@
 #include "TLD_V1.0.h"
 #include "time.h"
+#include "math.h"
 #include "sm_20_atomic_functions.h"
 
 TLD::TLD(const FileNode& file)
@@ -20,7 +21,7 @@ TLD::TLD(const FileNode& file)
 	mNoiseUpdate_f = (float)file["noise_update"];
 	mAngleUpdate_f = (float)file["angle_update"];
 	mScsleUpdate_f = (float)file["scale_update"];
-	//parameters for negative examples                 
+	//parameters for negative examples             
 	mthrIsNExpert_f = (float)file["overlap"];
 	mMaxBadbbNum_i = (int)file["num_patches"];
 	mthrTrackValid = (float)file["thr_nn_valid"];
@@ -1030,12 +1031,11 @@ void TLD::mGetAllbbOverlap_gpu(BoundingBox CurrBox)
 
 __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrBad,int *best_idx,BoundingBox* grid)
 {
-	__syncthreads();
-
+	__shared__ int *best;
+	best = (int*)malloc(sizeof(int)*Size);
 	int idx = blockDim.x*blockIdx.x + threadIdx.x;
 	mBB[idx] = -1;
 	int tid_idx = 2;
-	//int compared = 0;
 	if (idx < Size)
 	{
 		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
@@ -1046,30 +1046,22 @@ __global__ void GetGoodBadbb_kernel(int *mBB,int Size, float thrGood, float thrB
 		{
 			mBB[idx] = 0;
 		}
-		//**************************************//
-		for (int i = 1; i <= 8; i *= 2)
+		//******************Find BestBB********************//
+		while ((tid_idx <= pow((float)2, (int)sqrt((float)Size) + 1)) && (idx*tid_idx<Size))
 		{
-			if (idx < (20 / tid_idx))
+			if (grid[idx*tid_idx].overlap < grid[idx*tid_idx + tid_idx / 2].overlap)
 			{
-				num[idx*tid_idx] = (num[idx*tid_idx] >= num[idx*tid_idx + i]) ? num[idx*tid_idx] : num[idx*tid_idx + i];
+				grid[idx*tid_idx].overlap = grid[idx*tid_idx + tid_idx / 2].overlap;
+				best[idx*tid_idx] = idx*tid_idx + tid_idx / 2;
 			}
 			tid_idx *= 2;
 			__syncthreads();
 		}
-		tid_idx /= 2;
-		if (20 != tid_idx)
-		{
-			if (idx == tid_idx)
-			{
-				num[0] = (num[0] >= num[tid]) ? num[0] : num[tid];
-			}
-		}
-		*max = num[0];
-		//**************************************//
-	}
-	
-	__syncthreads();
 
+		*best_idx = best[0];
+		printf("***best_idx:%d\n", *best_idx);
+		//******************Find BestBB********************//
+	}
 }
 
 void TLD::mGetGoodBadbb_gpu()
@@ -1077,24 +1069,32 @@ void TLD::mGetGoodBadbb_gpu()
 	BoundingBox *grid;
 	int mBlockSize = (int)(ceil(mGridSize_i / 512));
 
-	int *result = new int[mGridSize_i], *mBB = new int[mGridSize_i];
+	int *result = (int*)malloc(sizeof(int)*mGridSize_i);
+	int	*mBB;
+	int *best_idx;
+	int *best_idx_host = new int(0);
 
 	cudaMalloc((void**)&grid, sizeof(BoundingBox)*mGridSize_i);
 	cudaMalloc((void**)&mBB, sizeof(int)*mGridSize_i);
+	cudaMalloc((void**)&best_idx, sizeof(int));
 
-	cudaMemcpy(grid, mGrid_ptr, sizeof(BoundingBox)* mGridSize_i, cudaMemcpyHostToDevice);
+	cudaMemcpy(grid, mGrid_ptr, sizeof(BoundingBox)*mGridSize_i, cudaMemcpyHostToDevice);
 
-	GetGoodBadbb_kernel << <mBlockSize, 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, best, grid);
+	GetGoodBadbb_kernel << <mBlockSize, 512 >> >(mBB, mGridSize_i, mthrGoodOverlap_f, mthrBadOverlap_f, best_idx, grid);
 
 	cudaMemcpy(result, mBB, sizeof(int)* mGridSize_i, cudaMemcpyDeviceToHost);
+	cudaMemcpy(best_idx_host, best_idx, sizeof(int), cudaMemcpyDeviceToHost);
 
 	cudaFree(grid);
 	cudaFree(mBB);
+	cudaFree(best_idx);
 
 	cudaDeviceSynchronize();
 
 	for (int i = 0; i < mGridSize_i; i++)
 	{
+		printf("**result:%d\n",result[i]);
+		printf("***best:%d\n", best_idx_host);
 		switch (result[i])
 		{
 		case 0:
@@ -1106,7 +1106,7 @@ void TLD::mGetGoodBadbb_gpu()
 		}
 	}
 
-	
+	mBestbb = mGrid_ptr[*best_idx_host];
 
 	printf("Best Box: %d %d %d %d\n", mBestbb.x, mBestbb.y, mBestbb.width, mBestbb.height);
 
