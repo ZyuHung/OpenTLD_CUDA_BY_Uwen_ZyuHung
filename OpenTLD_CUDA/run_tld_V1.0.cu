@@ -189,11 +189,11 @@ int main()
 	int SumFound_i = 0;
 	char str[15];
 	time_t start, stop;
-
+	
 	start = clock();
 	while (capture.read(NextImg_cvM))
 	{
-
+		
 		cvtColor(NextImg_cvM, NextGrayImg_cvM, CV_RGB2GRAY);
 
 
@@ -215,10 +215,13 @@ int main()
 
 		swap(CurrGrayImg_cvM, NextGrayImg_cvM);
 		//NextImg_cvM.copyTo(CurrImg_cvM);
-
+			
 	}
+	tld.mDetelteGrid_ptr();//ÊÍ·ÅGrid_ptrÄÚ´æ
+
 	stop = clock();
-	printf("time costs: %dms\n", (stop - start)*1000 / CLK_TCK);
+	printf("time costs: %dms\n", (stop - start) * 1000 / CLK_TCK);
 	system("pause");
+	
 	return 0;
 }

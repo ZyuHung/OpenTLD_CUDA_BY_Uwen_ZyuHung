@@ -8,7 +8,7 @@
 *class Name            :   Fernclassifie
 
 *Create Date           :   2016/08/06
-*Author                :   Uwen ZyuHung
+*Author                :   Uwen
 *
 *--------------------------Revision History---------------------------
 *No.  Version    Date          Revised By     Description

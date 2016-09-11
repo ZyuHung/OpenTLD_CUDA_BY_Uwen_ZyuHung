@@ -23,6 +23,7 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include "time.h"
+#include "omp.h"
 
 __constant__ int StandardBB[4];//保存当前目标box，各个box都要用到，用constant memory 可以加速
 
@@ -110,6 +111,11 @@ public:
 	void mGetAllbbOverlap_gpu(BoundingBox CurrBox);
 
 	void mGetGoodBadbb_gpu();
+
+	void mIsPassVarianceClassifier_gpu(bool* &isPass);
+
+	void mDetelteGrid_ptr();
+
 private:
 
 	bool mIsLastValid_b;//用来判断是否训练

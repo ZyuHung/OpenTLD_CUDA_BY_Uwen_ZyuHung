@@ -33,13 +33,13 @@ bool LKtracker::getPredictPt(const Mat& CurrImg_con_r_cvM, const Mat& NextImg_co
 
 {
 	//前向预测
-	Mat t;
 	calcOpticalFlowPyrLK(CurrImg_con_r_cvM, NextImg_con_r_cvM, CurrPoints_r_vt_cvP32,
 		NextPoints_r_vt_cvP32, mForwardStatus_b_vt, mForwardDistErr_f_vt, Size(4, 4), 5, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 20, 0.03), 0.5, 0);
 	//后向预测
-	calcOpticalFlowPyrLK(NextImg_con_r_cvM, CurrImg_con_r_cvM, NextPoints_r_vt_cvP32, t,
+	calcOpticalFlowPyrLK(NextImg_con_r_cvM, CurrImg_con_r_cvM, NextPoints_r_vt_cvP32, mPointsFB_vt_cvP32,
 		mBackwardStatus_b_vt, mBackwardDistErr_f_vt, Size(4, 4), 5, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 20, 0.03), 0.5, 0);
 	//CUDA!!
+#pragma omp parallel for
 	for (int i = 0; i<mPointsFB_vt_cvP32.size(); i++)
 	{
 		//后向预测的点与原点的欧氏距离
@@ -61,6 +61,7 @@ void LKtracker::getCorrelateMedian_v(const Mat& CurrImg_con_r_cvM, const Mat& Ne
 	Mat NextSubPix_cvM(10, 10, CV_8U);
 	Mat MatchResult_cvM(1, 1, CV_32F);
 
+//#pragma omp parallel for shared(CurrSubPix_cvM,NextSubPix_cvM,MatchResult_cvM)
 	for (int i = 0; i < CurrPoints_r_vt_cvP32.size(); i++)
 	{
 		if (mForwardStatus_b_vt[i])//如果发现前向预测能够预测得到
@@ -76,17 +77,18 @@ void LKtracker::getCorrelateMedian_v(const Mat& CurrImg_con_r_cvM, const Mat& Ne
 		}
 		else
 		{
-			mForwardDistErr_f_vt[i] = 0;
+			mForwardDistErr_f_vt[i] = 0.0;
 		}
 	}
 
 	/*求中位数*/
-	mForwardErrMedian_f = median(mForwardDistErr_f_vt);
+	mForwardErrMedian_f = median(mForwardDistErr_f_vt);	
 }
 /*除去前向预测点周围图像相似度较小一半和后向预测距离较大一半的点*/
 bool LKtracker::filterPts(vector<Point2f>& CurrPoints_r_vt_cvP32, vector<Point2f>& NextPoints_r_vt_cvP32)
 {
 	int PassPts = 0;
+//#pragma omp parallel for
 	for (int i = 0; i < NextPoints_r_vt_cvP32.size(); i++)
 	{
 		if (mForwardDistErr_f_vt[i]>mForwardErrMedian_f)//选出前向预测大于CorrelateMedian的点
@@ -94,6 +96,7 @@ bool LKtracker::filterPts(vector<Point2f>& CurrPoints_r_vt_cvP32, vector<Point2f
 			CurrPoints_r_vt_cvP32[PassPts] = CurrPoints_r_vt_cvP32[i];
 			NextPoints_r_vt_cvP32[PassPts] = NextPoints_r_vt_cvP32[i];
 			mBackwardDistErr_f_vt[PassPts] = mBackwardDistErr_f_vt[i];
+//#pragma omp atomic
 			PassPts++;
 		}
 	}
@@ -107,7 +110,7 @@ bool LKtracker::filterPts(vector<Point2f>& CurrPoints_r_vt_cvP32, vector<Point2f
 	mBackwardErrMedian_f = median(mBackwardDistErr_f_vt);
 
 	PassPts = 0;
-
+//#pragma omp parallel for
 	for (int i = 0; i < NextPoints_r_vt_cvP32.size(); i++)//选出后向预测小于欧氏距离中位数的点
 	{
 		if (!mForwardStatus_b_vt[i])
@@ -116,10 +119,11 @@ bool LKtracker::filterPts(vector<Point2f>& CurrPoints_r_vt_cvP32, vector<Point2f
 		{
 			CurrPoints_r_vt_cvP32[PassPts] = CurrPoints_r_vt_cvP32[i];
 			NextPoints_r_vt_cvP32[PassPts] = NextPoints_r_vt_cvP32[i];
+//#pragma omp atomic
 			PassPts++;
 		}
 	}
-
+	
 	CurrPoints_r_vt_cvP32.resize(PassPts);
 	NextPoints_r_vt_cvP32.resize(PassPts);
 
