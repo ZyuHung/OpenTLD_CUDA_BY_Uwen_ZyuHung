@@ -1269,7 +1269,7 @@ void TLD::mDetelteGrid_ptr()
 //		mGoodbb_i_vt.resize(mMaxGoodbbNum_i);
 //	}
 //
-//	mGetGoodbbHull_v();//获得框住所有box的矩形.
+//	mGetGoodbbHull_v();//获得框住所有box的矩形
 //
 //	delete[] result;
 //	delete[] best_idx_host;
