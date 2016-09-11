@@ -1159,7 +1159,7 @@ void TLD::mDetelteGrid_ptr()
 //		cacheOverlap[threadIdx.x] = grid[idx].overlap;
 //		//cacheIdx = blockDim.x*blockIdx.x;
 //		cacheIdx[threadIdx.x] = idx;
-//		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6
+//		if (grid[idx].overlap > thrGood)//找出重叠度达到好的要求的bb编号，阈值0.6．
 //		{
 //			mBB[idx] = 1;
 //		}
