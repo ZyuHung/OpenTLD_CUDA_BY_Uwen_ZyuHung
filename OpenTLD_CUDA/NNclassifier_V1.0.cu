@@ -94,7 +94,7 @@ void NNclassifier::UpdateNNmodel(const Mat& pPatch_con_cvM, const vector<Mat>& n
 	bool isSimilar_b = false, dummy;
 
 	GetNNConf(pPatch_con_cvM, isSimilar_b, dummy, rconf_f, cconf_f);
-	//当检测到认为可能是P专家与模型相似度过小时，若与P专家相似，则保存，否则用此重新初始化PExpert.
+	//当检测到认为可能是P专家与模型相似度过小时，若与P专家相似，则保存，否则用此重新初始化PExpert
 	if (rconf_f <= mthrUpdatePEx)//mthrUpdatePEx=0.65
 	{
 		if (isSimilar_b)
